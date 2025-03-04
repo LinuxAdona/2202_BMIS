@@ -40,7 +40,7 @@ public class AddFam extends javax.swing.JFrame {
     }
     
     private void loadHouses() {
-        String sql = "CALL GetAllHouses()";
+        String sql = "CALL GetAllHouses('')";
         try (Connection conn = DBConnection.Connect()) {
             try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {

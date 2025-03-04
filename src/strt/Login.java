@@ -19,7 +19,7 @@ import java.sql.ResultSet;
 public class Login extends javax.swing.JFrame {
 
     private static Login main = null;
-    public static String loggedInUserID;
+    public static int loggedInUserID;
     /**
      * Creates new form Login
      */
@@ -182,6 +182,8 @@ public class Login extends javax.swing.JFrame {
                 ps.setString(2, user);
                 ResultSet rs = ps.executeQuery();
                 if (rs.next()) {
+                    int userId = rs.getInt("user_id");
+                    loggedInUserID = userId;
                     String storedPass = rs.getString("password");
                     if (storedPass.equals(password)) {
                         JOptionPane.showMessageDialog(this, "Welcome, " + user + "!", "Login Successful", JOptionPane.INFORMATION_MESSAGE);
