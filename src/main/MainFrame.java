@@ -257,6 +257,135 @@ public class MainFrame extends javax.swing.JFrame {
             }
         }
     }
+    
+    private void loadBlotterRecords(int residentId) {
+        DefaultTableModel model = new DefaultTableModel(new String[]{"ID", "Complainant", "Respondent", "Case Details", "Date Filed", "Status"}, 0);
+        JTable table = new JTable(model);
+        table.setRowHeight(50);
+        table.setFont(new java.awt.Font("Poppins", java.awt.Font.PLAIN, 16));
+        table.getTableHeader().setFont(new java.awt.Font("Poppins", java.awt.Font.BOLD, 16));
+        JScrollPane scrollPane = new JScrollPane(table);
+
+        String sql = "SELECT * FROM blotter_records WHERE complainant = (SELECT CONCAT(first_name, ' ', last_name) FROM resident WHERE resident_id = ?) OR respondent = (SELECT CONCAT(first_name, ' ', last_name) FROM resident WHERE resident_id = ?)";
+        try (Connection conn = DBConnection.Connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, residentId);
+            ps.setInt(2, residentId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                int blotterId = rs.getInt("blotter_id");
+                String complainant = rs.getString("complainant");
+                String respondent = rs.getString("respondent");
+                String caseDetails = rs.getString("case_details");
+                String dateFiled = rs.getString("date_filed");
+                String status = rs.getString("status");
+                model.addRow(new Object[]{blotterId, complainant, respondent, caseDetails, dateFiled, status});
+            }
+        } catch (SQLException e) {
+            showErrorMessage("Database Error: " + e.getMessage());
+        }
+
+        JButton btnAddBlotter = new JButton("Add Blotter Record");
+        btnAddBlotter.setFont(new java.awt.Font("Poppins", java.awt.Font.BOLD, 16));
+        btnAddBlotter.addActionListener(e -> addBlotterRecord(residentId, model));
+
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.add(scrollPane, BorderLayout.CENTER);
+        panel.add(btnAddBlotter, BorderLayout.SOUTH);
+
+        JOptionPane.showMessageDialog(this, panel, "Blotter Records", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void addBlotterRecord(int residentId, DefaultTableModel model) {
+        // Select complainant
+        int complainantId = selectResident("Select Complainant");
+        if (complainantId == -1) {
+            return; // User canceled selection
+        }
+        // Select respondent
+        int respondentId = selectResident("Select Respondent");
+        if (respondentId == -1) {
+            return; // User canceled selection
+        }
+        // Enter case details
+        JTextArea caseDetailsField = new JTextArea(5, 20);
+        JScrollPane caseScroll = new JScrollPane(caseDetailsField);
+
+        Object[] message = {"Case Details:", caseScroll};
+        int option = JOptionPane.showConfirmDialog(this, message, "Add Blotter Record", JOptionPane.OK_CANCEL_OPTION);
+        if (option != JOptionPane.OK_OPTION) {
+            return;
+        }
+
+        String caseDetails = caseDetailsField.getText().trim();
+        if (caseDetails.isEmpty()) {
+            JOptionPane.showMessageDialog(this, "Case details cannot be empty.", "Input Error", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        // Retrieve names for complainant and respondent
+        String complainantName = getResidentName(complainantId);
+        String respondentName = getResidentName(respondentId);
+
+        // Insert into database
+        String sql = "INSERT INTO blotter_records (complainant, respondent, case_details, date_filed, status) VALUES (?, ?, ?, CURDATE(), 'Pending')";
+        try (Connection conn = DBConnection.Connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, complainantName);
+            ps.setString(2, respondentName);
+            ps.setString(3, caseDetails);
+            ps.executeUpdate();
+
+            loadBlotterRecords(residentId);
+            JOptionPane.showMessageDialog(this, "Blotter Record added successfully!", "Success", JOptionPane.INFORMATION_MESSAGE);
+        } catch (SQLException e) {
+            showErrorMessage("Database Error: " + e.getMessage());
+        }
+    }
+    
+    private int selectResident(String title) {
+        DefaultTableModel model = new DefaultTableModel(new String[]{"ID", "First Name", "Last Name"}, 0);
+        JTable table = new JTable(model);
+        table.setRowHeight(40);
+        table.setFont(new java.awt.Font("Poppins", java.awt.Font.PLAIN, 16));
+        table.getTableHeader().setFont(new java.awt.Font("Poppins", java.awt.Font.BOLD, 16));
+        JScrollPane scrollPane = new JScrollPane(table);
+
+        // Fetch residents from the database
+        String sql = "SELECT resident_id, first_name, last_name FROM resident";
+        try (Connection conn = DBConnection.Connect(); PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                int id = rs.getInt("resident_id");
+                String firstName = rs.getString("first_name");
+                String lastName = rs.getString("last_name");
+                model.addRow(new Object[]{id, firstName, lastName});
+            }
+        } catch (SQLException e) {
+            showErrorMessage("Database Error: " + e.getMessage());
+            return -1;
+        }
+
+        int option = JOptionPane.showConfirmDialog(this, scrollPane, title, JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+        if (option == JOptionPane.OK_OPTION) {
+            int selectedRow = table.getSelectedRow();
+            if (selectedRow != -1) {
+                return (int) table.getValueAt(selectedRow, 0); // Return resident_id
+            }
+        }
+        return -1; // Return -1 if no selection was made
+    }
+
+    private String getResidentName(int residentId) {
+        String sql = "SELECT CONCAT(first_name, ' ', last_name) AS full_name FROM resident WHERE resident_id = ?";
+        try (Connection conn = DBConnection.Connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, residentId);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getString("full_name");
+            }
+        } catch (SQLException e) {
+            showErrorMessage("Database Error: " + e.getMessage());
+        }
+        return "Unknown"; // Default if not found
+    }
 
 
     /** This method is called from within the constructor to
@@ -334,6 +463,7 @@ public class MainFrame extends javax.swing.JFrame {
         btnCertificate = new javax.swing.JButton();
         btnHealth = new javax.swing.JButton();
         btnOfficials = new javax.swing.JButton();
+        btnBlotter = new javax.swing.JButton();
         NavPane = new javax.swing.JPanel();
         lblHome = new javax.swing.JLabel();
         lblResP = new javax.swing.JLabel();
@@ -1048,6 +1178,22 @@ public class MainFrame extends javax.swing.JFrame {
             }
         });
 
+        btnBlotter.setBackground(new java.awt.Color(238, 238, 238));
+        btnBlotter.setFont(new java.awt.Font("Poppins", 0, 12)); // NOI18N
+        btnBlotter.setIcon(new javax.swing.ImageIcon(getClass().getResource("/assets/report-solid-24.png"))); // NOI18N
+        btnBlotter.setText("Blotter Record");
+        btnBlotter.setCursor(new java.awt.Cursor(java.awt.Cursor.HAND_CURSOR));
+        btnBlotter.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                btnBlotterMouseClicked(evt);
+            }
+        });
+        btnBlotter.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                btnBlotterActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout CertificatesPageLayout = new javax.swing.GroupLayout(CertificatesPage);
         CertificatesPage.setLayout(CertificatesPageLayout);
         CertificatesPageLayout.setHorizontalGroup(
@@ -1057,15 +1203,17 @@ public class MainFrame extends javax.swing.JFrame {
                 .addGroup(CertificatesPageLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(CertificatesPageLayout.createSequentialGroup()
                         .addComponent(jLabel15)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                        .addComponent(btnOfficials))
-                    .addGroup(CertificatesPageLayout.createSequentialGroup()
-                        .addComponent(jLabel16)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 49, Short.MAX_VALUE)
+                        .addGap(18, 18, 18)
                         .addComponent(btnHealth)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(btnCertificate)
-                        .addGap(18, 18, 18)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(btnBlotter)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 81, Short.MAX_VALUE)
+                        .addComponent(btnOfficials))
+                    .addGroup(CertificatesPageLayout.createSequentialGroup()
+                        .addComponent(jLabel16)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addComponent(txtSearch3, javax.swing.GroupLayout.PREFERRED_SIZE, 350, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(6, 6, 6)
                         .addComponent(lblSearch3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -1078,13 +1226,14 @@ public class MainFrame extends javax.swing.JFrame {
         CertificatesPageLayout.setVerticalGroup(
             CertificatesPageLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(CertificatesPageLayout.createSequentialGroup()
+                .addGap(19, 19, 19)
                 .addGroup(CertificatesPageLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(CertificatesPageLayout.createSequentialGroup()
-                        .addGap(19, 19, 19)
-                        .addComponent(jLabel15))
-                    .addGroup(CertificatesPageLayout.createSequentialGroup()
-                        .addContainerGap()
-                        .addComponent(btnOfficials)))
+                    .addGroup(CertificatesPageLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                        .addComponent(btnHealth)
+                        .addComponent(btnCertificate)
+                        .addComponent(btnBlotter)
+                        .addComponent(btnOfficials))
+                    .addComponent(jLabel15))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addComponent(jSeparator5, javax.swing.GroupLayout.PREFERRED_SIZE, 10, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGroup(CertificatesPageLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -1093,10 +1242,7 @@ public class MainFrame extends javax.swing.JFrame {
                         .addComponent(jLabel16))
                     .addGroup(CertificatesPageLayout.createSequentialGroup()
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addGroup(CertificatesPageLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                            .addComponent(txtSearch3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(btnCertificate)
-                            .addComponent(btnHealth)))
+                        .addComponent(txtSearch3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
                     .addGroup(CertificatesPageLayout.createSequentialGroup()
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(lblSearch3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
@@ -1298,7 +1444,7 @@ public class MainFrame extends javax.swing.JFrame {
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(mainPanel, javax.swing.GroupLayout.PREFERRED_SIZE, 620, Short.MAX_VALUE)
+            .addComponent(mainPanel, javax.swing.GroupLayout.DEFAULT_SIZE, 620, Short.MAX_VALUE)
         );
 
         pack();
@@ -1345,7 +1491,7 @@ public class MainFrame extends javax.swing.JFrame {
             Font boldFont = FontFactory.getFont(FontFactory.HELVETICA, 12, Font.BOLD);
 
             // Header
-            String headerText = "Republic of the Philippines\nProvince of Batangas\nMunicipality of Balayan\nBarangay Malalay\nOffice Of The Punong Barangay";
+            String headerText = "Republic of the Philippines\nProvince of Batangas\nMunicipality of Balayan\nBarangay Malalay\nOffice Of The Punong Barangay\n_____________________________________________________";
             Paragraph header = new Paragraph(headerText.toUpperCase(), headerFont);
             header.setAlignment(Element.ALIGN_CENTER);
             document.add(header);
@@ -1435,7 +1581,7 @@ public class MainFrame extends javax.swing.JFrame {
             Font boldFont = FontFactory.getFont(FontFactory.HELVETICA, 12, Font.BOLD);
 
             // Header
-            String headerText = "Republic of the Philippines\nProvince of Batangas\nMunicipality of Balayan\nBarangay Malalay\nOffice Of The Punong Barangay";
+            String headerText = "Republic of the Philippines\nProvince of Batangas\nMunicipality of Balayan\nBarangay Malalay\nOffice Of The Punong Barangay\n_____________________________________________________";
             Paragraph header = new Paragraph(headerText.toUpperCase(), headerFont);
             header.setAlignment(Element.ALIGN_CENTER);
             document.add(header);
@@ -1445,7 +1591,7 @@ public class MainFrame extends javax.swing.JFrame {
             brgy.setAlignment(Element.ALIGN_CENTER);
             document.add(brgy);
 
-            Paragraph title = new Paragraph("CERTIFICATE OF INDIGENCY", titleFont);
+            Paragraph title = new Paragraph("BARANGAY CLEARANCE", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
             document.add(title);
             document.add(new Paragraph("\n\n\n\n"));
@@ -1522,7 +1668,7 @@ public class MainFrame extends javax.swing.JFrame {
             Font boldFont = FontFactory.getFont(FontFactory.HELVETICA, 12, Font.BOLD);
 
             // Header
-            String headerText = "Republic of the Philippines\nProvince of Batangas\nMunicipality of Balayan\nBarangay Malalay\nOffice Of The Punong Barangay";
+            String headerText = "Republic of the Philippines\nProvince of Batangas\nMunicipality of Balayan\nBarangay Malalay\nOffice Of The Punong Barangay\n_____________________________________________________";
             Paragraph header = new Paragraph(headerText.toUpperCase(), headerFont);
             header.setAlignment(Element.ALIGN_CENTER);
             document.add(header);
@@ -1532,7 +1678,7 @@ public class MainFrame extends javax.swing.JFrame {
             brgy.setAlignment(Element.ALIGN_CENTER);
             document.add(brgy);
 
-            Paragraph title = new Paragraph("CERTIFICATE OF INDIGENCY", titleFont);
+            Paragraph title = new Paragraph("BUSINESS PERMIT", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
             document.add(title);
             document.add(new Paragraph("\n\n\n\n"));
@@ -1572,7 +1718,93 @@ public class MainFrame extends javax.swing.JFrame {
     }
 
     private void generateCertificateOfResidencyPDF(int residentId) {
-        generateBarangayClearancePDF(residentId, "proof of residency");
+        Document document = new Document();
+        String fileName = "Certificate_Indigency_" + residentId + ".pdf";
+
+        try {
+            PdfWriter.getInstance(document, new FileOutputStream(fileName));
+            document.open();
+
+            // Fetch resident details from the database
+            String name = "", address = "", citizenship = "Filipino", captain = "";
+            int age = 0;
+            try (Connection conn = DBConnection.Connect(); PreparedStatement ps = conn.prepareStatement("CALL GetResident(?)"); PreparedStatement psO = conn.prepareStatement("CALL GetOfficial('Barangay Captain/Chairman')")) {
+                ps.setInt(1, residentId);
+                ResultSet rs = ps.executeQuery();
+
+                if (rs.next()) {
+                    name = rs.getString("name");
+                    address = rs.getString("address");
+                    age = rs.getInt("age");
+                }
+
+                ResultSet rsO = psO.executeQuery();
+
+                if (rsO.next()) {
+                    captain = rsO.getString("name");
+                }
+            } catch (SQLException e) {
+                showErrorMessage("Database Error: " + e.getMessage());
+            }
+
+            // Set fonts
+            Font headerFont = FontFactory.getFont(FontFactory.HELVETICA, 12, Font.BOLD);
+            Font titleFont = FontFactory.getFont(FontFactory.HELVETICA, 16, Font.BOLD);
+            Font brgyFont = FontFactory.getFont(FontFactory.HELVETICA, 18, Font.BOLD);
+            Font regularFont = FontFactory.getFont(FontFactory.HELVETICA, 12);
+            Font boldFont = FontFactory.getFont(FontFactory.HELVETICA, 12, Font.BOLD);
+
+            // Header
+            String headerText = "Republic of the Philippines\nProvince of Batangas\nMunicipality of Balayan\nBarangay Malalay\nOffice Of The Punong Barangay\n_____________________________________________________";
+            Paragraph header = new Paragraph(headerText.toUpperCase(), headerFont);
+            header.setAlignment(Element.ALIGN_CENTER);
+            document.add(header);
+            document.add(new Paragraph("\n"));
+
+            Paragraph brgy = new Paragraph("BARANGAY MALALAY CERTIFICATE", brgyFont);
+            brgy.setAlignment(Element.ALIGN_CENTER);
+            document.add(brgy);
+
+            Paragraph title = new Paragraph("CERTIFICATE OF RESIDENCY", titleFont);
+            title.setAlignment(Element.ALIGN_CENTER);
+            document.add(title);
+            document.add(new Paragraph("\n\n\n\n"));
+
+            // Body
+            Paragraph body = new Paragraph();
+            body.add(new Chunk("TO WHOM IT MAY CONCERN:\n\n", boldFont));
+            body.add(new Chunk("This is to certify that ", regularFont));
+            body.add(new Chunk(name, boldFont));
+            body.add(new Chunk(", ", regularFont));
+            body.add(new Chunk(age + " years old, ", regularFont));
+            body.add(new Chunk(citizenship + " citizen, and a resident of ", regularFont));
+            body.add(new Chunk(address, regularFont));
+            body.add(new Chunk(", is classified as one of the residents in this barangay.\n\n", regularFont));
+            body.add(new Chunk("This certification is issued upon the request of the above-named person for ", regularFont));
+            body.add(new Chunk("proof of residency", boldFont));
+            body.add(new Chunk(" and for whatever legal purpose it may serve.\n\n", regularFont));
+            document.add(body);
+
+            // Date
+            LocalDate today = LocalDate.now();
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM d, yyyy");
+            String date = today.format(formatter);
+            Paragraph dateParagraph = new Paragraph("Issued this " + date + " at Barangay Malalay, Balayan, Batangas.", regularFont);
+            dateParagraph.setAlignment(Element.ALIGN_LEFT);
+            document.add(dateParagraph);
+
+            // Footer
+            document.add(new Paragraph("\n\n\n\n", regularFont));
+            Paragraph signature = new Paragraph("__________________________\n" + captain, boldFont);
+            signature.setAlignment(Element.ALIGN_RIGHT);
+            document.add(signature);
+
+            document.close();
+            openPDF(fileName);
+            JOptionPane.showMessageDialog(this, "Indigency Certificate has been generated!", "Success", JOptionPane.INFORMATION_MESSAGE);
+        } catch (DocumentException | IOException e) {
+            showErrorMessage("Error generating PDF: " + e.getMessage());
+        }
     }
 
     private void openPDF(String filePath) {
@@ -1639,7 +1871,7 @@ public class MainFrame extends javax.swing.JFrame {
     private void loadCertificateRequests() {
         // Check if the logged-in user is a Barangay Captain
         if (!isUserBarangayCaptain()) {
-            JOptionPane.showMessageDialog(this, "Access Denied! Only the Barangay Captain can view this.", "Access Denied", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Access Denied! Only the Barangay Captain and Secretary can view this.", "Access Denied", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -1732,14 +1964,13 @@ public class MainFrame extends javax.swing.JFrame {
             ps.setInt(1, getLoggedInUserID()); // Implement getCurrentUserId() to get the logged-in user
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
-                return rs.getString("position").equalsIgnoreCase("Barangay Captain/Chairman");
+                return rs.getString("position").equalsIgnoreCase("Barangay Captain/Chairman") || rs.getString("position").equalsIgnoreCase("Barangay Secretary");
             }
         } catch (SQLException e) {
             showErrorMessage("Database Error: " + e.getMessage());
         }
         return false;
     }
-
     
     private void generateCertificate(int residentId, String certificateType, String purpose) {
         switch (certificateType) {
@@ -1757,8 +1988,6 @@ public class MainFrame extends javax.swing.JFrame {
                 break;
         }
     }
-
-
     
     private void btnCertificateMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_btnCertificateMouseClicked
         
@@ -1793,6 +2022,20 @@ public class MainFrame extends javax.swing.JFrame {
     private void lblCountMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_lblCountMouseClicked
         // TODO add your handling code here:
     }//GEN-LAST:event_lblCountMouseClicked
+
+    private void btnBlotterMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_btnBlotterMouseClicked
+        // TODO add your handling code here:
+    }//GEN-LAST:event_btnBlotterMouseClicked
+
+    private void btnBlotterActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_btnBlotterActionPerformed
+        int selectedRow = tbResCert.getSelectedRow();
+        if (selectedRow != -1) {
+            int residentId = Integer.parseInt(tbResCert.getValueAt(selectedRow, 0).toString());
+            loadBlotterRecords(residentId);
+        } else {
+            JOptionPane.showMessageDialog(this, "Please select a resident to view blotter records.", "Selection Error", JOptionPane.WARNING_MESSAGE);
+        }
+    }//GEN-LAST:event_btnBlotterActionPerformed
 
     private void deleteResident(int residentId) {
         String sql = "CALL DeleteResident(?)";
@@ -2076,6 +2319,7 @@ public class MainFrame extends javax.swing.JFrame {
     private javax.swing.JPanel ResidentPage;
     private javax.swing.JButton btnAddFam;
     private javax.swing.JButton btnAddHouse;
+    private javax.swing.JButton btnBlotter;
     private javax.swing.JButton btnCertificate;
     private javax.swing.JButton btnDeleteFam;
     private javax.swing.JButton btnDeleteHouse;
